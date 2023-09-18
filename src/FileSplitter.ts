@@ -6,20 +6,26 @@ import {UniqDirGenerator} from './UniqDirGenerator';
 export class FileSplitter {
     private validator: FileAndDirValidator;
     private dirGenerator: UniqDirGenerator;
-    
+
     constructor(validator: FileAndDirValidator, dirGenerator: UniqDirGenerator) {
         this.validator = validator;
         this.dirGenerator = dirGenerator;
     }
-    
+
     fileSplit(filePath: string, partsNumber: number): string {
         this.validator.validateExistingFile(filePath);
+        const maxChunkSize: number = 2048 * 1024;
         const baseDirName: string = path.dirname(filePath);
         const partsFolder = this.dirGenerator.generateUniqDir(baseDirName);
         const fileExtension = path.extname(filePath);
         const fileDescriptor = fs.openSync(filePath, 'r');
         let fileSize = fs.statSync(filePath).size;
         const chunkSize = Math.ceil(fileSize / partsNumber);
+
+        if (chunkSize > maxChunkSize) {
+            throw new Error('The File is way too large. Please, try to increase parts number.');
+        }
+
         let buffer = Buffer.alloc(chunkSize);
 
         for (let i = 0; i < partsNumber; i++) {
@@ -44,12 +50,14 @@ export class FileSplitter {
             throw new Error('File or directory already exists: ' + mergeFilePath);
         }
 
+        const outputStream = fs.createWriteStream(mergeFilePath);
+
         fs.readdirSync(partsDirPath).forEach(element => {
             const fullElementPath: string = partsDirPath + '/' + element;
 
             if (fs.lstatSync(fullElementPath).isFile()) {
-                const content = fs.readFileSync(fullElementPath, {encoding: "utf-8", flag: 'r'});
-                fs.writeFileSync(mergeFilePath, content, {flag: 'a'});
+                const inputStream = fs.createReadStream(fullElementPath);
+                inputStream.pipe(outputStream);
             }
         });
     }
